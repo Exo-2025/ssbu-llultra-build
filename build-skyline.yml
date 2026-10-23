@@ -1,0 +1,52 @@
+name: Build SSBU Online Deluxe (Skyline)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Find and extract source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(ssbu-online-deluxe-1.4.3-llultra-native-resolution-source.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "Missing ssbu-online-deluxe-1.4.3-llultra-native-resolution-source.zip in repository root."
+            exit 1
+          fi
+          unzip -q "${zips[0]}" -d source-unpacked
+          project="$(find source-unpacked -name Cargo.toml -print -quit | xargs -r dirname)"
+          if [ -z "$project" ] || [ ! -f "$project/Cargo.toml" ]; then
+            echo "Could not find Cargo.toml inside source ZIP."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$project" >> "$GITHUB_ENV"
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-skyline
+        run: cargo install cargo-skyline --locked
+
+      - name: Install Skyline Rust standard library
+        run: cargo skyline update-std
+
+      - name: Build plugin
+        run: cargo skyline build --release
+        working-directory: ${{ env.PROJECT_DIR }}
+
+      - name: Upload compiled NRO
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssbu-online-deluxe-llultra-build
+          path: ${{ env.PROJECT_DIR }}/target/aarch64-skyline-switch/release/libssbu_online_deluxe.nro
+          if-no-files-found: error
